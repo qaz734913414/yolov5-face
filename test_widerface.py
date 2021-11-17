@@ -1,4 +1,5 @@
 import argparse
+import glob
 import time
 from pathlib import Path
 
@@ -16,7 +17,7 @@ from utils.plots import plot_one_box
 from utils.torch_utils import select_device, load_classifier, time_synchronized
 from tqdm import tqdm
 
-def dynamic_resize(shape, stride=32):
+def dynamic_resize(shape, stride=64):
     max_size = max(shape[0], shape[1])
     if max_size % stride != 0:
         max_size = (int(max_size / stride) + 1) * stride 
@@ -73,7 +74,7 @@ def detect(model, img0):
     imgsz = opt.img_size
     if imgsz <= 0:                    # original size    
         imgsz = dynamic_resize(img0.shape)
-    imgsz = check_img_size(imgsz, s=stride)  # check img_size
+    imgsz = check_img_size(imgsz, s=64)  # check img_size
     img = letterbox(img0, imgsz)[0]
     # Convert
     img = img[:, :, ::-1].transpose(2, 0, 1)  # BGR to RGB, to 3x416x416
@@ -106,17 +107,15 @@ def detect(model, img0):
             x2 = int(xywh[0] * w + 0.5 * xywh[2] * w)
             y2 = int(xywh[1] * h + 0.5 * xywh[3] * h)
             boxes.append([x1, y1, x2-x1, y2-y1, conf])
-            #img0 = show_results(img0, xywh, conf, landmarks, class_num)
-    #cv2.imwrite('test.jpg', img0)
     return boxes
 
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--weights', nargs='+', type=str, default='runs/train/exp5/weights/last.pt', help='model.pt path(s)')
-    parser.add_argument('--img-size', type=int, default=1024, help='inference size (pixels)')
-    parser.add_argument('--conf-thres', type=float, default=0.01, help='object confidence threshold')
-    parser.add_argument('--iou-thres', type=float, default=0.4, help='IOU threshold for NMS')
+    parser.add_argument('--img-size', type=int, default=640, help='inference size (pixels)')
+    parser.add_argument('--conf-thres', type=float, default=0.02, help='object confidence threshold')
+    parser.add_argument('--iou-thres', type=float, default=0.5, help='IOU threshold for NMS')
     parser.add_argument('--device', default='0', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
     parser.add_argument('--agnostic-nms', action='store_true', help='class-agnostic NMS')
     parser.add_argument('--augment', action='store_true', help='augmented inference')
@@ -126,9 +125,18 @@ if __name__ == '__main__':
     parser.add_argument('--name', default='exp', help='save results to project/name')
     parser.add_argument('--exist-ok', action='store_true', help='existing project/name ok, do not increment')
     parser.add_argument('--save_folder', default='./widerface_evaluate/widerface_txt/', type=str, help='Dir to save txt results')
-    parser.add_argument('--dataset_folder', default='/ssd_1t/derron/WiderFace/val/images/', type=str, help='dataset path')
+    parser.add_argument('--dataset_folder', default='../WiderFace/val/images/', type=str, help='dataset path')
+    parser.add_argument('--folder_pict', default='/yolov5-face/data/widerface/val/wider_val.txt', type=str, help='folder_pict')
     opt = parser.parse_args()
     print(opt)
+
+    # changhy : read folder_pict
+    pict_folder = {}
+    with open(opt.folder_pict, 'r') as f:
+        lines = f.readlines()
+        for line in lines:
+            line = line.strip().split('/')
+            pict_folder[line[-1]] = line[-2]
 
     # Load model
     device = select_device(opt.device)
@@ -136,17 +144,19 @@ if __name__ == '__main__':
     with torch.no_grad():
         # testing dataset
         testset_folder = opt.dataset_folder
-        testset_list = opt.dataset_folder[:-7] + "wider_val.txt"
 
-        with open(testset_list, 'r') as fr:
-            test_dataset = fr.read().split()
-            num_images = len(test_dataset)
-        for img_name in tqdm(test_dataset):
-            image_path = testset_folder + img_name
-            img0 = cv2.imread(image_path)  # BGR 
+        for image_path in tqdm(glob.glob(os.path.join(testset_folder, '*'))):
+            if image_path.endswith('.txt'):
+                continue
+            img0 = cv2.imread(image_path)  # BGR
+            if img0 is None:
+                print(f'ignore : {image_path}')
+                continue
             boxes = detect(model, img0)
             # --------------------------------------------------------------------
-            save_name = opt.save_folder + img_name[:-4] + ".txt"
+            image_name = os.path.basename(image_path)
+            txt_name = os.path.splitext(image_name)[0] + ".txt"
+            save_name = os.path.join(opt.save_folder, pict_folder[image_name], txt_name)
             dirname = os.path.dirname(save_name)
             if not os.path.isdir(dirname):
                 os.makedirs(dirname)
@@ -157,4 +167,4 @@ if __name__ == '__main__':
                 fd.write(bboxs_num)
                 for box in boxes:
                     fd.write('%d %d %d %d %.03f' % (box[0], box[1], box[2], box[3], box[4] if box[4] <= 1 else 1) + '\n')
-   
+        print('done.')

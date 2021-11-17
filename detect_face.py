@@ -72,7 +72,7 @@ def show_results(img, xywh, conf, landmarks, class_num):
 
 def detect_one(model, image_path, device):
     # Load model
-    img_size = 2048
+    img_size = 800
     conf_thres = 0.3
     iou_thres = 0.5
 
@@ -140,7 +140,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--weights', nargs='+', type=str, default='runs/train/exp5/weights/last.pt', help='model.pt path(s)')
     parser.add_argument('--image', type=str, default='data/images/test.jpg', help='source')  # file/folder, 0 for webcam
-    parser.add_argument('--img-size', type=int, default=2048, help='inference size (pixels)')
+    parser.add_argument('--img-size', type=int, default=640, help='inference size (pixels)')
     opt = parser.parse_args()
     print(opt)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
